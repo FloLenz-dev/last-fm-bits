@@ -1,5 +1,5 @@
 # last-fm-bits
-Tool using the last.fm API
+Tools using the last.fm API
 
 This project is meant to utilize the last.fm API for various insideful or fun uses.
 
