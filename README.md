@@ -16,7 +16,7 @@ This project is meant to utilize the last.fm API for various insideful or fun us
 
 # Setup
 
-**install python packages*
+**install python packages**
 
 - python3 -m pip install pylast
 - python3 -m pip install python-dotenv
