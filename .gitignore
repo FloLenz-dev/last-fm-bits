@@ -1,0 +1,7 @@
+#Environments
+.env
+
+# Pickle files
+*.pkl
+*.pickle
+*.p
