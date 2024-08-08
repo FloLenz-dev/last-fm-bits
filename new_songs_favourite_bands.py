@@ -19,7 +19,7 @@ LASTFM_USERNAME = os.getenv("LASTFM_USERNAME")
 last_fm_password_hash = pylast.md5(os.getenv("LASTFM_PASSWORD"))
 
 # Spotify playlist ID
-playlist_id = "2VW9yvSQhJNK0RoS2YYgQp"
+playlist_id = "dummy"
 
 # Spotify instance
 spotifyObject = spotipy.Spotify(auth=token)
