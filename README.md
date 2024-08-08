@@ -15,6 +15,13 @@ This project is meant to utilize the last.fm API for various insideful or fun us
 - TO-DO: more sophisticated clustering with better results, code-cleanup
 
 # Setup
+
+**install python packages*
+
+- python3 -m pip install pylast
+- python3 -m pip install python-dotenv
+- python3 -m pip install spotipy
+
 **Obtain API Keys:**
 
    - **Spotify:**
@@ -24,7 +31,7 @@ This project is meant to utilize the last.fm API for various insideful or fun us
    - **Last.fm:**
      - Sign up or log in to [Last.fm](https://www.last.fm/api) and create an application to get your `API Key` and `API Secret`.
 
-  Then replace the "dummy" values in the script by your obtained personal values
+  Then replace the "dummy" values in the .env file by your obtained personal values
 
 ## License
 This project is licensed under the MIT License.
