@@ -1,7 +1,5 @@
 import os
 import pylast
-import pickle
-import spotipy
 from dotenv import load_dotenv
 
 # Load environment variables from .env file
@@ -13,8 +11,6 @@ LASTFM_API_SECRET = os.getenv("LASTFM_API_SECRET")
 LASTFM_USERNAME = os.getenv("LASTFM_USERNAME")
 last_fm_password_hash = pylast.md5(os.getenv("LASTFM_PASSWORD"))
 
-print (LASTFM_API_KEY)
-
 # Last.fm network instance
 network_instance = pylast.LastFMNetwork(
     api_key=LASTFM_API_KEY,
@@ -24,23 +20,33 @@ network_instance = pylast.LastFMNetwork(
 )
 
 def get_personal_top_artists(username, network_instance):
-    return network_instance.get_user(username).get_top_artists(limit=100, period=pylast.PERIOD_OVERALL)
-    
-def get_artist_instance(artist_name, network_instance):
-    return network_instance.get_artist(artist_name)
+    while True:
+         try:
+              top_artists = network_instance.get_user(username).get_top_artists(limit=10, period=pylast.PERIOD_OVERALL)
+         except Exception as e:
+              print(f"Error on getting top artists, {e}, retry...")
+              continue
+         break
+    return top_artists
 
-def get_similiar_artists(artist):
-    return artist.get_similar(limit=100)
-
+def get_similar_artists(artist):
+    print ("ADD " + artist.name)
+    while True:
+         try:
+              similar_artists = artist.get_similar(limit=10)
+         except Exception as e:
+              print(f"Error on getting similiar artists, {e}, retry...")
+              continue
+         break
+    return similar_artists
+     
 def add_to_scoring_list_if_in_input_list(scoring_list, input_artists, artist, score):
     if artist in input_artists:
-        print("\t" + artist)
         if artist in scoring_list:
             scoring_list[artist] += score
         else:
             scoring_list[artist] = score
     return scoring_list
-
 
 def main():
     artists_to_scores = {}
@@ -55,24 +61,28 @@ def main():
     "Our Promise", "Pain", "Paleface Swiss", "Palehørse", "Pest Control", "Plaguemace", "Punk Rock Factory", "Randale", "Rise Of The Northstar", "Robse", "Rotting Christ", "Samurai Pizza Cats", 
     "Shredhead", "Siamese", "Slow Fall", "Sodom", "Soulprison", "Spire Of Lazarus", "Spiritbox", "Spiritworld", "Stillbirth", "Subway To Sally", "Suotana", "Surprise Act", "Svalbard", "Sylosis", 
     "Ten56", "Tenside", "Thron", "Tilintetgjort", "Unearth", "Unprocessed", "Venues", "Viscera", "Voodoo Kiss", "Warkings", "Whitechapel", "Zerre"]
+    
     top_artists = get_personal_top_artists(LASTFM_USERNAME, network_instance)    
+    artist2neighbour = {}
     
     for top_artist in top_artists:
         print (top_artist.item.name)
-        score = int(top_artist.weight)
-        artists_to_scores = add_to_scoring_list_if_in_input_list(artists_to_scores, input_artists, top_artist.item.name, score)
-        neighbours_of_top_artist = get_similiar_artists(top_artist.item)
-        
-        for neighbour_of_top_artist in neighbours_of_top_artist:
-            score = int(top_artist.weight) * float(neighbour_of_top_artist.match)
+        score = int(top_artist.weight) #How popular ist the artist with the user?
+        artists_to_scores = add_to_scoring_list_if_in_input_list(artists_to_scores, input_artists, top_artist.item.name, score) #if top_artist is in input list, add it to scoring list
+        if not top_artist.item.name in artist2neighbour: 
+            artist2neighbour[top_artist.item.name] = get_similar_artists(top_artist.item)
+        #print(artist2neighbour.keys())
+        for neighbour_of_top_artist in artist2neighbour[top_artist.item.name]:
+            score = int(top_artist.weight) * float(neighbour_of_top_artist.match) #How popular is the top artist with the use * how close is the neighbour to the top artist?
             artists_to_scores = add_to_scoring_list_if_in_input_list(artists_to_scores, input_artists, neighbour_of_top_artist.item.name, score)
-            neighbours_of_neighbour_of_top_artist = get_similiar_artists(get_artist_instance(neighbour_of_top_artist.item.get_name(), network_instance))
-            
-            for neighbour_of_neighbour_of_top_artist in neighbours_of_neighbour_of_top_artist:
-                if (neighbour_of_neighbour_of_top_artist == top_artist):
-                    continue
+            if not neighbour_of_top_artist.item.name in artist2neighbour:
+                artist2neighbour[neighbour_of_top_artist.item.name] = get_similar_artists(neighbour_of_top_artist.item)
+            #print(artist2neighbour.keys())
+            for neighbour_of_neighbour_of_top_artist in  artist2neighbour[neighbour_of_top_artist.item.name]:
+                if (neighbour_of_neighbour_of_top_artist == top_artist): 
+                    continue #Don't count it again
                 score = int(top_artist.weight) * float(neighbour_of_top_artist.match) * float(neighbour_of_neighbour_of_top_artist.match)
-                artists_to_scores =  add_to_scoring_list_if_in_input_list(artists_to_scores, input_artists, neighbour_of_neighbour_of_top_artist.item.get_name(), score)
+                artists_to_scores =  add_to_scoring_list_if_in_input_list (artists_to_scores, input_artists, neighbour_of_neighbour_of_top_artist.item.get_name(), score)
     
     sorted_artists = dict(sorted(artists_to_scores.items(), key=lambda item: item[1]))# sort descendin by score
     
@@ -81,3 +91,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
