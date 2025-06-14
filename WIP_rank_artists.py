@@ -1,6 +1,7 @@
 import os
 import pylast
 from dotenv import load_dotenv
+from functools import lru_cache
 
 # Load environment variables from .env file
 load_dotenv()
@@ -29,8 +30,9 @@ def get_personal_top_artists(username, network_instance):
          break
     return top_artists
 
-def get_similar_artists(artist):
-    print ("ADD " + artist.name)
+@lru_cache(maxsize=100000)
+def get_similar_artists_cached(artist):
+    print ("\tADD " + artist.name)
     while True:
          try:
               similar_artists = artist.get_similar(limit=10)
@@ -69,26 +71,24 @@ def main():
         print (top_artist.item.name)
         score = int(top_artist.weight) #How popular ist the artist with the user?
         artists_to_scores = add_to_scoring_list_if_in_input_list(artists_to_scores, input_artists, top_artist.item.name, score) #if top_artist is in input list, add it to scoring list
-        if not top_artist.item.name in artist2neighbour: 
-            artist2neighbour[top_artist.item.name] = get_similar_artists(top_artist.item)
-        #print(artist2neighbour.keys())
-        for neighbour_of_top_artist in artist2neighbour[top_artist.item.name]:
+
+        for neighbour_of_top_artist in get_similar_artists_cached(top_artist.item):
+            print (neighbour_of_top_artist.item.name)
             score = int(top_artist.weight) * float(neighbour_of_top_artist.match) #How popular is the top artist with the use * how close is the neighbour to the top artist?
             artists_to_scores = add_to_scoring_list_if_in_input_list(artists_to_scores, input_artists, neighbour_of_top_artist.item.name, score)
-            if not neighbour_of_top_artist.item.name in artist2neighbour:
-                artist2neighbour[neighbour_of_top_artist.item.name] = get_similar_artists(neighbour_of_top_artist.item)
-            #print(artist2neighbour.keys())
-            for neighbour_of_neighbour_of_top_artist in  artist2neighbour[neighbour_of_top_artist.item.name]:
+
+            for neighbour_of_neighbour_of_top_artist in  get_similar_artists_cached(neighbour_of_top_artist.item):
                 if (neighbour_of_neighbour_of_top_artist == top_artist): 
                     continue #Don't count it again
                 score = int(top_artist.weight) * float(neighbour_of_top_artist.match) * float(neighbour_of_neighbour_of_top_artist.match)
                 artists_to_scores =  add_to_scoring_list_if_in_input_list (artists_to_scores, input_artists, neighbour_of_neighbour_of_top_artist.item.get_name(), score)
     
-    sorted_artists = dict(sorted(artists_to_scores.items(), key=lambda item: item[1]))# sort descendin by score
+    sorted_artists = dict(sorted(artists_to_scores.items(), key=lambda item: item[1], reverse=True))# sort descending by score
     
     for artist, score in sorted_artists.items():
         print(f"{artist}: {score}")
-
+    print("Cache-Statistik:")
+    print(get_similar_artists_cached.cache_info())
 if __name__ == "__main__":
     main()
 
