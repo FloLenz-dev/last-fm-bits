@@ -73,8 +73,6 @@ def main():
             scoreboard = update_scoreboard_if_match(scoreboard, input_artists, similar_artist.item.name, score_similar_artist)
 
             for similar_similar_artist in  get_similar_artists_cached(similar_artist.item):
-                if (similar_similar_artist == top_artist): 
-                    continue #Don't count it again
                 score_similar_similiar_artist = score_similar_artist * float(similar_similar_artist.match)
                 scoreboard =  update_scoreboard_if_match (scoreboard, input_artists, similar_similar_artist.item.get_name(), score_similar_similiar_artist)
     
