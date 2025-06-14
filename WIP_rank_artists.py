@@ -2,6 +2,7 @@ import os
 import pylast
 from dotenv import load_dotenv
 from functools import lru_cache
+from tqdm import tqdm
 
 # Load environment variables from .env file
 load_dotenv()
@@ -21,7 +22,7 @@ network_instance = pylast.LastFMNetwork(
 )
 
 def get_personal_top_artists(username, network_instance):
-    while True:
+    while True: #try until success, because e.g. missing internet connection can trigger errors on many retries, still finally work
          try:
               top_artists = network_instance.get_user(username).get_top_artists(limit=10, period=pylast.PERIOD_OVERALL)
          except Exception as e:
@@ -32,8 +33,7 @@ def get_personal_top_artists(username, network_instance):
 
 @lru_cache(maxsize=100000)
 def get_similar_artists_cached(artist):
-    print ("\tADD " + artist.name)
-    while True:
+    while True: #try until success, because e.g. missing internet connection can trigger errors on many retries, still finally work
          try:
               similar_artists = artist.get_similar(limit=10)
          except Exception as e:
@@ -65,15 +65,17 @@ def main():
     "Ten56", "Tenside", "Thron", "Tilintetgjort", "Unearth", "Unprocessed", "Venues", "Viscera", "Voodoo Kiss", "Warkings", "Whitechapel", "Zerre"]
     
     top_artists = get_personal_top_artists(LASTFM_USERNAME, network_instance)    
-    artist2neighbour = {}
     
-    for top_artist in top_artists:
-        print (top_artist.item.name)
+    for top_artist in tqdm(top_artists, desc="Top Artist"):
+
         score = int(top_artist.weight) #How popular ist the artist with the user?
         artists_to_scores = add_to_scoring_list_if_in_input_list(artists_to_scores, input_artists, top_artist.item.name, score) #if top_artist is in input list, add it to scoring list
 
-        for neighbour_of_top_artist in get_similar_artists_cached(top_artist.item):
-            print (neighbour_of_top_artist.item.name)
+        for neighbour_of_top_artist in tqdm(
+            get_similar_artists_cached(top_artist.item),
+            desc=f"Similar to {top_artist.item.name}",
+            leave=False
+        ):
             score = int(top_artist.weight) * float(neighbour_of_top_artist.match) #How popular is the top artist with the use * how close is the neighbour to the top artist?
             artists_to_scores = add_to_scoring_list_if_in_input_list(artists_to_scores, input_artists, neighbour_of_top_artist.item.name, score)
 
