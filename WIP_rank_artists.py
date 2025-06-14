@@ -3,6 +3,8 @@ import pylast
 from dotenv import load_dotenv
 from functools import lru_cache
 from tqdm import tqdm
+from time import sleep
+from collections import defaultdict
 
 # Load environment variables from .env file
 load_dotenv()
@@ -21,42 +23,33 @@ lastfm_network_instance = pylast.LastFMNetwork(
     password_hash=last_fm_password_hash,
 )
 
-def get_personal_top_artists(username, network_instance):
-    """ Retrieves the top artists for a given Last.fm user """
-
-    while True: #try until success, because e.g. missing internet connection can trigger errors on many retries, still finally work
-         try:
-              top_artists = network_instance.get_user(username).get_top_artists(limit=10, period=pylast.PERIOD_OVERALL)
-         except Exception as e:
-              print(f"Error on getting top artists, {e}, retry...")
-              continue
-         break
-    return top_artists
+def retry_with_backoff(func, *args, retries=10, wait_time=600, **kwargs):
+    attempt = 0
+    while True:
+        try:
+            return func(*args, **kwargs)
+        except Exception as e:
+            attempt += 1
+            if attempt < retries:
+                print(f"Error: {e}, retrying...")
+            else:
+                print(f"Error: {e}, waiting {wait_time//60} minutes before retry...")
+                sleep(wait_time)
 
 @lru_cache(maxsize=100000)
 def get_similar_artists_cached(artist):
    """ Retrieves similar artists for a given artist, with caching for performance reasons """ 
-   while True: #try until success, because e.g. missing internet connection can trigger errors on many retries, still finally work
-         try:
-              similar_artists = artist.get_similar(limit=10)
-         except Exception as e:
-              print(f"Error on getting similiar artists, {e}, retry...")
-              continue
-         break
-   return similar_artists
+   return artist.get_similar(limit=10)
      
-def add_to_scoring_list_if_in_input_list(scoring_list, input_artists, artist, score):
+def update_scoreboard_if_match(scoreboard, input_artists, artist, score):
     """Adds or updates an artist's score in the scoring list if the artist is in the input list"""
 
     if artist in input_artists:
-        if artist in scoring_list:
-            scoring_list[artist] += score
-        else:
-            scoring_list[artist] = score
-    return scoring_list
+        scoreboard[artist] += score
+    return scoreboard
 
 def main():
-    scoreboard = {}
+    scoreboard = defaultdict(float)
     input_artists = set(["Aborted", "Acranius", "Aetherian", "After The Burial", "The Amity Affliction", "Amon Amarth", "Angstskríg", "Ankor", "Architects", "Arkona", "Armored Dawn", 
     "Asphyx", "Avralize", "The Baboon Show", "Before The Dawn", "Behemoth", "The Black Dahlia Murder", "Blasmusik Illenschwang", "Blind Channel", "Bodysnatcher", "Bokassa", "Brothers Of Metal", 
     "Brutal Sphincter", "Burning Witches", "The Butcher Sisters", "Callejon", "Carnation", "Cradle Of Filth", "Crypta", "Cult Of Fire", "Dark Tranquillity", "Dear Mother", "Defocus", "Delain", 
@@ -69,26 +62,26 @@ def main():
     "Shredhead", "Siamese", "Slow Fall", "Sodom", "Soulprison", "Spire Of Lazarus", "Spiritbox", "Spiritworld", "Stillbirth", "Subway To Sally", "Suotana", "Surprise Act", "Svalbard", "Sylosis", 
     "Ten56", "Tenside", "Thron", "Tilintetgjort", "Unearth", "Unprocessed", "Venues", "Viscera", "Voodoo Kiss", "Warkings", "Whitechapel", "Zerre"])
     
-    top_artists = get_personal_top_artists(LASTFM_USERNAME, lastfm_network_instance)    
+    top_artists = retry_with_backoff(lambda: lastfm_network_instance.get_user(LASTFM_USERNAME).get_top_artists(limit=10, period=pylast.PERIOD_OVERALL)) 
     
     for top_artist in tqdm(top_artists, desc="Top Artist"):
 
         score = int(top_artist.weight) #How popular ist the artist with the user?
-        scoreboard = add_to_scoring_list_if_in_input_list(scoreboard, input_artists, top_artist.item.name, score) #if top_artist is in input list, add it to scoring list
+        scoreboard = update_scoreboard_if_match(scoreboard, input_artists, top_artist.item.name, score) #if top_artist is in input list, add it to scoring list
 
         for similar_artist in tqdm(
-            get_similar_artists_cached(top_artist.item),
+            retry_with_backoff(lambda: get_similar_artists_cached(top_artist.item)),
             desc=f"Similar to {top_artist.item.name}",
             leave=False
         ):
-            score = int(top_artist.weight) * float(similar_artist.match) #How popular is the top artist with the use * how similiar is the similiar artist?
-            scoreboard = add_to_scoring_list_if_in_input_list(scoreboard, input_artists, similar_artist.item.name, score)
+            score = int(top_artist.weight) * float(similar_artist.match) #How popular is the top artist with the use * how similar is the similar artist?
+            scoreboard = update_scoreboard_if_match(scoreboard, input_artists, similar_artist.item.name, score)
 
-            for similar_similiar_artist in  get_similar_artists_cached(similar_artist.item):
-                if (similar_similiar_artist == top_artist): 
+            for similar_similar_artist in  get_similar_artists_cached(similar_artist.item):
+                if (similar_similar_artist == top_artist): 
                     continue #Don't count it again
-                score = int(top_artist.weight) * float(similar_artist.match) * float(similar_similiar_artist.match)
-                scoreboard =  add_to_scoring_list_if_in_input_list (scoreboard, input_artists, similar_similiar_artist.item.get_name(), score)
+                score = int(top_artist.weight) * float(similar_artist.match) * float(similar_similar_artist.match)
+                scoreboard =  update_scoreboard_if_match (scoreboard, input_artists, similar_similar_artist.item.get_name(), score)
     
     sorted_artists = dict(sorted(scoreboard.items(), key=lambda item: item[1], reverse=True))# sort descending by score
     
