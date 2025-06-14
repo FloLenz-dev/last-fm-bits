@@ -52,7 +52,7 @@ def add_to_scoring_list_if_in_input_list(scoring_list, input_artists, artist, sc
 
 def main():
     artists_to_scores = {}
-    input_artists = ["Aborted", "Acranius", "Aetherian", "After The Burial", "The Amity Affliction", "Amon Amarth", "Angstskríg", "Ankor", "Architects", "Arkona", "Armored Dawn", 
+    input_artists = set(["Aborted", "Acranius", "Aetherian", "After The Burial", "The Amity Affliction", "Amon Amarth", "Angstskríg", "Ankor", "Architects", "Arkona", "Armored Dawn", 
     "Asphyx", "Avralize", "The Baboon Show", "Before The Dawn", "Behemoth", "The Black Dahlia Murder", "Blasmusik Illenschwang", "Blind Channel", "Bodysnatcher", "Bokassa", "Brothers Of Metal", 
     "Brutal Sphincter", "Burning Witches", "The Butcher Sisters", "Callejon", "Carnation", "Cradle Of Filth", "Crypta", "Cult Of Fire", "Dark Tranquillity", "Dear Mother", "Defocus", "Delain", 
     "Disbelief", "Disentomb", "Dymytry", "Dynazty", "Eclipse", "Einherjer", "Embrace Your Punishment", "Emmure", "Enslaved", "Equilibrium", "Eradikated", "Erdling", "Ereb Altor", "Escuela Grind", 
@@ -62,7 +62,7 @@ def main():
     "Motionless In White", "Myrkur", "Nachtblut", "Nakkeknaekker", "Neaera", "Necrophobic", "Necrotted", "Nestor", "The Night Eternal", "Nyktophobia", "Obscura", "The Ocean", "Orden Ogan", 
     "Our Promise", "Pain", "Paleface Swiss", "Palehørse", "Pest Control", "Plaguemace", "Punk Rock Factory", "Randale", "Rise Of The Northstar", "Robse", "Rotting Christ", "Samurai Pizza Cats", 
     "Shredhead", "Siamese", "Slow Fall", "Sodom", "Soulprison", "Spire Of Lazarus", "Spiritbox", "Spiritworld", "Stillbirth", "Subway To Sally", "Suotana", "Surprise Act", "Svalbard", "Sylosis", 
-    "Ten56", "Tenside", "Thron", "Tilintetgjort", "Unearth", "Unprocessed", "Venues", "Viscera", "Voodoo Kiss", "Warkings", "Whitechapel", "Zerre"]
+    "Ten56", "Tenside", "Thron", "Tilintetgjort", "Unearth", "Unprocessed", "Venues", "Viscera", "Voodoo Kiss", "Warkings", "Whitechapel", "Zerre"])
     
     top_artists = get_personal_top_artists(LASTFM_USERNAME, network_instance)    
     
