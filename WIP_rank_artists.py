@@ -31,10 +31,11 @@ def retry_with_backoff(func, *args, retries=10, wait_time=600, **kwargs):
         except Exception as e:
             attempt += 1
             if attempt < retries:
-                print(f"Error: {e}, retrying...")
+                tqdm.write(f"Error: {e}, retrying...")
             else:
-                print(f"Error: {e}, waiting {wait_time//60} minutes before retry...")
+                tqdm.write(f"Error: {e}, waiting {wait_time//60} minutes before retry...")
                 sleep(wait_time)
+                wait_time+=600
 
 @lru_cache(maxsize=100000)
 def get_similar_artists_cached(artist):
@@ -48,19 +49,13 @@ def update_scoreboard_if_match(scoreboard, input_artists, artist, score):
         scoreboard[artist] += score
     return scoreboard
 
+def load_artists_from_file(filepath: str = "artists.txt") -> set[str]:
+    with open(filepath, "r", encoding="utf-8") as file:
+        return {line.strip() for line in file if line.strip()}
+
 def main():
     scoreboard = defaultdict(float)
-    input_artists = set(["Aborted", "Acranius", "Aetherian", "After The Burial", "The Amity Affliction", "Amon Amarth", "Angstskríg", "Ankor", "Architects", "Arkona", "Armored Dawn", 
-    "Asphyx", "Avralize", "The Baboon Show", "Before The Dawn", "Behemoth", "The Black Dahlia Murder", "Blasmusik Illenschwang", "Blind Channel", "Bodysnatcher", "Bokassa", "Brothers Of Metal", 
-    "Brutal Sphincter", "Burning Witches", "The Butcher Sisters", "Callejon", "Carnation", "Cradle Of Filth", "Crypta", "Cult Of Fire", "Dark Tranquillity", "Dear Mother", "Defocus", "Delain", 
-    "Disbelief", "Disentomb", "Dymytry", "Dynazty", "Eclipse", "Einherjer", "Embrace Your Punishment", "Emmure", "Enslaved", "Equilibrium", "Eradikated", "Erdling", "Ereb Altor", "Escuela Grind", 
-    "Evil Invaders", "Exodus", "Eyes Wide Open", "Fall Of Serenity", "Fateful Finality", "Feuerschwanz", "Fixation", "Flogging Molly", "Future Palace", "Guilt Trip", "Halcyon Days", "Hand Of Juno", 
-    "Heaven Shall Burn", "Hemelbestormer", "Heretoir", "Ignea", "Impalement", "Imperium Dekadenz", "Insanity Alert", "Insomnium", "J.B.O.", "Jesus Piece", "Jinjer", "Kampfar", "Korpiklaani", 
-    "Kupfergold", "Leave.", "Lordi", "Lord Of The Lost", "Los Males Del Mundo", "Madball", "Mavis", "Megaherz", "Memoriam", "Mental Cruelty", "Meshuggah", "Moon Shot", "Moonspell", "Mørket", 
-    "Motionless In White", "Myrkur", "Nachtblut", "Nakkeknaekker", "Neaera", "Necrophobic", "Necrotted", "Nestor", "The Night Eternal", "Nyktophobia", "Obscura", "The Ocean", "Orden Ogan", 
-    "Our Promise", "Pain", "Paleface Swiss", "Palehørse", "Pest Control", "Plaguemace", "Punk Rock Factory", "Randale", "Rise Of The Northstar", "Robse", "Rotting Christ", "Samurai Pizza Cats", 
-    "Shredhead", "Siamese", "Slow Fall", "Sodom", "Soulprison", "Spire Of Lazarus", "Spiritbox", "Spiritworld", "Stillbirth", "Subway To Sally", "Suotana", "Surprise Act", "Svalbard", "Sylosis", 
-    "Ten56", "Tenside", "Thron", "Tilintetgjort", "Unearth", "Unprocessed", "Venues", "Viscera", "Voodoo Kiss", "Warkings", "Whitechapel", "Zerre"])
+    input_artists = load_artists_from_file()
     
     top_artists = retry_with_backoff(lambda: lastfm_network_instance.get_user(LASTFM_USERNAME).get_top_artists(limit=10, period=pylast.PERIOD_OVERALL)) 
     
@@ -74,14 +69,14 @@ def main():
             desc=f"Similar to {top_artist.item.name}",
             leave=False
         ):
-            score = int(top_artist.weight) * float(similar_artist.match) #How popular is the top artist with the use * how similar is the similar artist?
-            scoreboard = update_scoreboard_if_match(scoreboard, input_artists, similar_artist.item.name, score)
+            score_similar_artist = int(top_artist.weight) * float(similar_artist.match) #How popular is the top artist with the use * how similar is the similar artist?
+            scoreboard = update_scoreboard_if_match(scoreboard, input_artists, similar_artist.item.name, score_similar_artist)
 
             for similar_similar_artist in  get_similar_artists_cached(similar_artist.item):
                 if (similar_similar_artist == top_artist): 
                     continue #Don't count it again
-                score = int(top_artist.weight) * float(similar_artist.match) * float(similar_similar_artist.match)
-                scoreboard =  update_scoreboard_if_match (scoreboard, input_artists, similar_similar_artist.item.get_name(), score)
+                score_similar_similiar_artist = score_similar_artist * float(similar_similar_artist.match)
+                scoreboard =  update_scoreboard_if_match (scoreboard, input_artists, similar_similar_artist.item.get_name(), score_similar_similiar_artist)
     
     sorted_artists = dict(sorted(scoreboard.items(), key=lambda item: item[1], reverse=True))# sort descending by score
     
