@@ -14,7 +14,7 @@ LASTFM_USERNAME = os.getenv("LASTFM_USERNAME")
 last_fm_password_hash = pylast.md5(os.getenv("LASTFM_PASSWORD"))
 
 # Last.fm network instance
-network_instance = pylast.LastFMNetwork(
+lastfm_network_instance = pylast.LastFMNetwork(
     api_key=LASTFM_API_KEY,
     api_secret=LASTFM_API_SECRET,
     username=LASTFM_USERNAME,
@@ -22,6 +22,8 @@ network_instance = pylast.LastFMNetwork(
 )
 
 def get_personal_top_artists(username, network_instance):
+    """ Retrieves the top artists for a given Last.fm user """
+
     while True: #try until success, because e.g. missing internet connection can trigger errors on many retries, still finally work
          try:
               top_artists = network_instance.get_user(username).get_top_artists(limit=10, period=pylast.PERIOD_OVERALL)
@@ -33,16 +35,19 @@ def get_personal_top_artists(username, network_instance):
 
 @lru_cache(maxsize=100000)
 def get_similar_artists_cached(artist):
-    while True: #try until success, because e.g. missing internet connection can trigger errors on many retries, still finally work
+   """ Retrieves similar artists for a given artist, with caching for performance reasons """ 
+   while True: #try until success, because e.g. missing internet connection can trigger errors on many retries, still finally work
          try:
               similar_artists = artist.get_similar(limit=10)
          except Exception as e:
               print(f"Error on getting similiar artists, {e}, retry...")
               continue
          break
-    return similar_artists
+   return similar_artists
      
 def add_to_scoring_list_if_in_input_list(scoring_list, input_artists, artist, score):
+    """Adds or updates an artist's score in the scoring list if the artist is in the input list"""
+
     if artist in input_artists:
         if artist in scoring_list:
             scoring_list[artist] += score
@@ -51,7 +56,7 @@ def add_to_scoring_list_if_in_input_list(scoring_list, input_artists, artist, sc
     return scoring_list
 
 def main():
-    artists_to_scores = {}
+    scoreboard = {}
     input_artists = set(["Aborted", "Acranius", "Aetherian", "After The Burial", "The Amity Affliction", "Amon Amarth", "Angstskríg", "Ankor", "Architects", "Arkona", "Armored Dawn", 
     "Asphyx", "Avralize", "The Baboon Show", "Before The Dawn", "Behemoth", "The Black Dahlia Murder", "Blasmusik Illenschwang", "Blind Channel", "Bodysnatcher", "Bokassa", "Brothers Of Metal", 
     "Brutal Sphincter", "Burning Witches", "The Butcher Sisters", "Callejon", "Carnation", "Cradle Of Filth", "Crypta", "Cult Of Fire", "Dark Tranquillity", "Dear Mother", "Defocus", "Delain", 
@@ -64,31 +69,31 @@ def main():
     "Shredhead", "Siamese", "Slow Fall", "Sodom", "Soulprison", "Spire Of Lazarus", "Spiritbox", "Spiritworld", "Stillbirth", "Subway To Sally", "Suotana", "Surprise Act", "Svalbard", "Sylosis", 
     "Ten56", "Tenside", "Thron", "Tilintetgjort", "Unearth", "Unprocessed", "Venues", "Viscera", "Voodoo Kiss", "Warkings", "Whitechapel", "Zerre"])
     
-    top_artists = get_personal_top_artists(LASTFM_USERNAME, network_instance)    
+    top_artists = get_personal_top_artists(LASTFM_USERNAME, lastfm_network_instance)    
     
     for top_artist in tqdm(top_artists, desc="Top Artist"):
 
         score = int(top_artist.weight) #How popular ist the artist with the user?
-        artists_to_scores = add_to_scoring_list_if_in_input_list(artists_to_scores, input_artists, top_artist.item.name, score) #if top_artist is in input list, add it to scoring list
+        scoreboard = add_to_scoring_list_if_in_input_list(scoreboard, input_artists, top_artist.item.name, score) #if top_artist is in input list, add it to scoring list
 
-        for neighbour_of_top_artist in tqdm(
+        for similar_artist in tqdm(
             get_similar_artists_cached(top_artist.item),
             desc=f"Similar to {top_artist.item.name}",
             leave=False
         ):
-            score = int(top_artist.weight) * float(neighbour_of_top_artist.match) #How popular is the top artist with the use * how close is the neighbour to the top artist?
-            artists_to_scores = add_to_scoring_list_if_in_input_list(artists_to_scores, input_artists, neighbour_of_top_artist.item.name, score)
+            score = int(top_artist.weight) * float(similar_artist.match) #How popular is the top artist with the use * how similiar is the similiar artist?
+            scoreboard = add_to_scoring_list_if_in_input_list(scoreboard, input_artists, similar_artist.item.name, score)
 
-            for neighbour_of_neighbour_of_top_artist in  get_similar_artists_cached(neighbour_of_top_artist.item):
-                if (neighbour_of_neighbour_of_top_artist == top_artist): 
+            for similar_similiar_artist in  get_similar_artists_cached(similar_artist.item):
+                if (similar_similiar_artist == top_artist): 
                     continue #Don't count it again
-                score = int(top_artist.weight) * float(neighbour_of_top_artist.match) * float(neighbour_of_neighbour_of_top_artist.match)
-                artists_to_scores =  add_to_scoring_list_if_in_input_list (artists_to_scores, input_artists, neighbour_of_neighbour_of_top_artist.item.get_name(), score)
+                score = int(top_artist.weight) * float(similar_artist.match) * float(similar_similiar_artist.match)
+                scoreboard =  add_to_scoring_list_if_in_input_list (scoreboard, input_artists, similar_similiar_artist.item.get_name(), score)
     
-    sorted_artists = dict(sorted(artists_to_scores.items(), key=lambda item: item[1], reverse=True))# sort descending by score
+    sorted_artists = dict(sorted(scoreboard.items(), key=lambda item: item[1], reverse=True))# sort descending by score
     
     for artist, score in sorted_artists.items():
-        print(f"{artist}: {score}")
+        print(f"{artist}: {round(score, 2)}")
     print("Cache-Statistik:")
     print(get_similar_artists_cached.cache_info())
 if __name__ == "__main__":
