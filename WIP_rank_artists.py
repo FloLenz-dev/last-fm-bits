@@ -5,15 +5,16 @@ from functools import lru_cache
 from tqdm import tqdm
 from time import sleep
 from collections import defaultdict
+from typing import List
 
 # Load environment variables from .env file
 load_dotenv()
 
-# Last.fm API credentials
-LASTFM_API_KEY = os.getenv("LASTFM_API_KEY")
-LASTFM_API_SECRET = os.getenv("LASTFM_API_SECRET")
-LASTFM_USERNAME = os.getenv("LASTFM_USERNAME")
-last_fm_password_hash = pylast.md5(os.getenv("LASTFM_PASSWORD"))
+# Last.fm API credentials # ."" as a fallback to satisfy mypy...
+LASTFM_API_KEY = os.getenv("LASTFM_API_KEY", "")
+LASTFM_API_SECRET = os.getenv("LASTFM_API_SECRET", "")
+LASTFM_USERNAME = os.getenv("LASTFM_USERNAME", "")
+last_fm_password_hash = pylast.md5(os.getenv("LASTFM_PASSWORD", ""))
 
 # Last.fm network instance
 lastfm_network_instance = pylast.LastFMNetwork(
@@ -22,6 +23,7 @@ lastfm_network_instance = pylast.LastFMNetwork(
     username=LASTFM_USERNAME,
     password_hash=last_fm_password_hash,
 )
+
 
 def retry_with_backoff(func, *args, retries=10, wait_time=600, **kwargs):
     attempt = 0
@@ -36,14 +38,20 @@ def retry_with_backoff(func, *args, retries=10, wait_time=600, **kwargs):
             else:
                 tqdm.write(f"Error: {e}, waiting {wait_time//60} minutes before retry...")
                 sleep(wait_time)
-                wait_time+=600
+                wait_time += 600
+
 
 @lru_cache(maxsize=100000)
-def get_similar_artists_cached(artist):
-   """ Retrieves similar artists for a given artist, with caching for performance reasons """ 
-   return artist.get_similar(limit=100)
+def get_similar_artists_cached(artist: pylast.Artist) -> List[pylast.SimilarItem]:
+   """Retrieves similar artists for a given artist, with caching for performance reasons""" 
+   return artist.get_similar(limit=10)
      
-def update_scoreboard_if_match(scoreboard, input_artists, artist, score):
+def update_scoreboard_if_match(
+    scoreboard: defaultdict[str, float],
+    input_artists: set[str],
+    artist: str,
+    score: float
+) -> defaultdict[str, float]:
     """Adds or updates an artist's score in the scoring list if the artist is in the input list"""
 
     if artist in input_artists:
@@ -54,44 +62,56 @@ def load_artists_from_file(filepath: str = "artists.txt") -> set[str]:
     with open(filepath, "r", encoding="utf-8") as file:
         return {line.strip() for line in file if line.strip()}   
 
-def merge_defaultdicts(a, b):
+def merge_defaultdicts(
+    a: defaultdict[str, float], b: dict[str, float]
+) -> defaultdict[str, float]:
     result = defaultdict(float, a)  # Kopie von a
     for key, value in b.items():
         result[key] += value
     return result
 
-def recursive_scoring_by_similar_artists(artist, score_parent_artist, input_artists, current_depth, max_depths):
+def recursive_scoring_by_similar_artists(
+    artist: pylast.SimilarItem,
+    score_parent_artist: float,
+    input_artists: set[str],
+    current_depth: int,
+    max_depths: int
+) -> defaultdict[str, float]:
     """score by artist similarity, recursivly look at neighbours of neighbours"""
-    scoreboard = defaultdict(float)
+    scoreboard: defaultdict[str, float] = defaultdict(float)
+
     if (current_depth >= max_depths):
-        return scoreboard
+        return scoreboard #terminate if maximum depth is reached
+
+    #else look for neighbours of provided artists calculate their similarity scores, add them if suitable and call the function recursivly again
     for similar_artist in tqdm(
             retry_with_backoff(lambda: get_similar_artists_cached(artist.item)),
             desc=f"Similar to {artist.item.name}",
             leave=False
     ):
-        score_similiar_artist = score_parent_artist * float(similar_artist.match)
-        scoreboard =  update_scoreboard_if_match (scoreboard, input_artists, similar_artist.item.get_name(), score_similiar_artist)
-        scoreboard =  merge_defaultdicts(scoreboard, recursive_scoring_by_similar_artists(similar_artist, score_similiar_artist, input_artists, current_depth +1 , max_depths))
+        score_similar_artist = score_parent_artist * float(similar_artist.match) 
+        scoreboard =  update_scoreboard_if_match (scoreboard, input_artists, similar_artist.item.get_name(), score_similar_artist)
+        scoreboard =  merge_defaultdicts(scoreboard, recursive_scoring_by_similar_artists(similar_artist, score_similar_artist, input_artists, current_depth +1 , max_depths))
     return scoreboard
+
     
-def main():
-    scoreboard = defaultdict(float)
+def main() -> None:
+    scoreboard: defaultdict[str, float]  = defaultdict(float)
     input_artists = load_artists_from_file()
-    max_depths = 4
+    max_depths = 3
     current_depth = 1
-    top_artists = retry_with_backoff(lambda: lastfm_network_instance.get_user(LASTFM_USERNAME).get_top_artists(limit=100, period=pylast.PERIOD_OVERALL)) 
+    top_artists = retry_with_backoff(lambda: lastfm_network_instance.get_user(LASTFM_USERNAME).get_top_artists(limit=10, period=pylast.PERIOD_OVERALL)) 
     
     for top_artist in tqdm(top_artists, desc="Top Artist"):
 
-        score = int(top_artist.weight) #How popular ist the artist with the user?
+        score = float(top_artist.weight) #How popular ist the artist with the user? top_artist.weight is an int, but since score is an float...
         scoreboard = update_scoreboard_if_match(scoreboard, input_artists, top_artist.item.name, score) #if top_artist is in input list, add it to scoring list
         for similar_artist in tqdm(
             retry_with_backoff(lambda: get_similar_artists_cached(top_artist.item)),
             desc=f"Similar to {top_artist.item.name}",
             leave=False
         ):
-            score_similar_artist = int(top_artist.weight) * float(similar_artist.match) #How popular is the top artist with the use * how similar is the similar artist?
+            score_similar_artist = float(top_artist.weight) * float(similar_artist.match) #How popular is the top artist with the use * how similar is the similar artist?
             scoreboard = update_scoreboard_if_match(scoreboard, input_artists, similar_artist.item.name, score_similar_artist)
             if (current_depth == max_depths):
                 break
