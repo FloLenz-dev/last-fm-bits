@@ -14,6 +14,12 @@ This project is meant to utilize the last.fm API for various insideful or fun us
 - clusters them by k-means-clustering based on their tags
 - TO-DO: more sophisticated clustering with better results, code-cleanup
 
+## rank_artists.py
+- compare your Last.fm top Artists to a list of Artist (e.g. a Festival Lineup)
+- uses the similiar Artist Option of last.fm
+- TO-DO: do reverse search
+
+
 # Setup
 
 **install python packages**
