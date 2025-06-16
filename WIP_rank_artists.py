@@ -6,7 +6,31 @@ from tqdm import tqdm
 from time import sleep
 from collections import defaultdict
 from typing import List
+import argparse
 
+def parse_args():
+    parser = argparse.ArgumentParser(
+        description="Score input artists based on similarity to a user's Last.fm top artists."
+    )
+    parser.add_argument(
+        "-f", "--file",
+        type=str,
+        default="artists.txt",
+        help="Path to the input file containing artist names (default: 'artists.txt')."
+    )
+    parser.add_argument(
+        "-d", "--depth",
+        type=int,
+        default=3,
+        help="Maximum recursion depth when traversing similar artists (default: 3)."
+    )
+    parser.add_argument(
+        "-b", "--breadth",
+        type=int,
+        default=10,
+        help="Number of top artists to fetch from the user profile (default: 10)."
+    )
+    return parser.parse_args()
 
 def get_required_env(key: str) -> str:
     value = os.getenv(key)
@@ -23,7 +47,6 @@ def retry_with_backoff(func, *args, retries=10, wait_time=600, **kwargs):
             attempt += 1
             if attempt < retries:
                 tqdm.write(f"Error: {e}, retrying...")
-                pass
             else:
                 tqdm.write(f"Error: {e}, waiting {wait_time//60} minutes before retry...")
                 sleep(wait_time)
@@ -31,9 +54,9 @@ def retry_with_backoff(func, *args, retries=10, wait_time=600, **kwargs):
 
 
 @lru_cache(maxsize=100000)
-def get_similar_artists_cached(artist: pylast.Artist) -> List[pylast.SimilarItem]:
+def get_similar_artists_cached(artist: pylast.Artist, breadth=10) -> List[pylast.SimilarItem]:
    """Retrieves similar artists for a given artist, with caching for performance reasons""" 
-   return artist.get_similar(limit=10)
+   return artist.get_similar(limit=breadth)
      
 def update_scoreboard_if_match(
     scoreboard: defaultdict[str, float],
@@ -63,6 +86,7 @@ def recursive_scoring_by_similar_artists(
     artist: pylast.SimilarItem,
     score_parent_artist: float,
     input_artists: set[str],
+    breadth: int,
     current_depth: int,
     max_depths: int
 ) -> defaultdict[str, float]:
@@ -74,13 +98,13 @@ def recursive_scoring_by_similar_artists(
 
     #else look for neighbours of provided artists calculate their similarity scores, add them if suitable and call the function recursivly again
     for similar_artist in tqdm(
-            retry_with_backoff(lambda: get_similar_artists_cached(artist.item)),
+            retry_with_backoff(lambda: get_similar_artists_cached(artist.item, breadth)),
             desc=f"Similar to {artist.item.name}",
             leave=False
     ):
         score_similar_artist = score_parent_artist * float(similar_artist.match) 
         scoreboard =  update_scoreboard_if_match (scoreboard, input_artists, similar_artist.item.get_name(), score_similar_artist)
-        scoreboard =  merge_defaultdicts(scoreboard, recursive_scoring_by_similar_artists(similar_artist, score_similar_artist, input_artists, current_depth +1 , max_depths))
+        scoreboard =  merge_defaultdicts(scoreboard, recursive_scoring_by_similar_artists(similar_artist, score_similar_artist, input_artists, breadth, current_depth +1 , max_depths))
     return scoreboard
 
 # Load environment variables from .env file
@@ -104,18 +128,20 @@ lastfm_network_instance = pylast.LastFMNetwork(
 )
     
 def main() -> None:
+    args = parse_args()
     scoreboard: defaultdict[str, float]  = defaultdict(float)
-    input_artists = load_artists_from_file()
-    max_depths = 3
+    input_artists = load_artists_from_file(args.file)
+    max_depths = args.depth
+    breadth = args.breadth
     current_depth = 1
-    top_artists = retry_with_backoff(lambda: lastfm_network_instance.get_user(LASTFM_USERNAME).get_top_artists(limit=10, period=pylast.PERIOD_OVERALL)) 
+    top_artists = retry_with_backoff(lambda: lastfm_network_instance.get_user(LASTFM_USERNAME).get_top_artists(limit=breadth, period=pylast.PERIOD_OVERALL)) 
     
     for top_artist in tqdm(top_artists, desc="Top Artist"):
 
         score = float(top_artist.weight) #How popular ist the artist with the user? top_artist.weight is an int, but since score is an float...
         scoreboard = update_scoreboard_if_match(scoreboard, input_artists, top_artist.item.name, score) #if top_artist is in input list, add it to scoring list
         for similar_artist in tqdm(
-            retry_with_backoff(lambda: get_similar_artists_cached(top_artist.item)),
+            retry_with_backoff(lambda: get_similar_artists_cached(top_artist.item, args.breadth)),
             desc=f"Similar to {top_artist.item.name}",
             leave=False
         ):
@@ -123,7 +149,7 @@ def main() -> None:
             scoreboard = update_scoreboard_if_match(scoreboard, input_artists, similar_artist.item.name, score_similar_artist)
             if (current_depth == max_depths):
                 break
-            scoreboard =  merge_defaultdicts(scoreboard, recursive_scoring_by_similar_artists(similar_artist, score_similar_artist, input_artists, current_depth + 1 , max_depths))
+            scoreboard =  merge_defaultdicts(scoreboard, recursive_scoring_by_similar_artists(similar_artist, score_similar_artist, input_artists, breadth, current_depth + 1 , max_depths))
     
     sorted_artists = dict(sorted(scoreboard.items(), key=lambda item: item[1], reverse=True))# sort descending by score
     
