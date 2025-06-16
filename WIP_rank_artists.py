@@ -7,23 +7,12 @@ from time import sleep
 from collections import defaultdict
 from typing import List
 
-# Load environment variables from .env file
-load_dotenv()
 
-# Last.fm API credentials # ."" as a fallback to satisfy mypy...
-LASTFM_API_KEY = os.getenv("LASTFM_API_KEY", "")
-LASTFM_API_SECRET = os.getenv("LASTFM_API_SECRET", "")
-LASTFM_USERNAME = os.getenv("LASTFM_USERNAME", "")
-last_fm_password_hash = pylast.md5(os.getenv("LASTFM_PASSWORD", ""))
-
-# Last.fm network instance
-lastfm_network_instance = pylast.LastFMNetwork(
-    api_key=LASTFM_API_KEY,
-    api_secret=LASTFM_API_SECRET,
-    username=LASTFM_USERNAME,
-    password_hash=last_fm_password_hash,
-)
-
+def get_required_env(key: str) -> str:
+    value = os.getenv(key)
+    if value is None:
+        raise EnvironmentError(f"Environment variable {key} is required")
+    return value
 
 def retry_with_backoff(func, *args, retries=10, wait_time=600, **kwargs):
     attempt = 0
@@ -94,6 +83,25 @@ def recursive_scoring_by_similar_artists(
         scoreboard =  merge_defaultdicts(scoreboard, recursive_scoring_by_similar_artists(similar_artist, score_similar_artist, input_artists, current_depth +1 , max_depths))
     return scoreboard
 
+# Load environment variables from .env file
+load_dotenv()
+
+
+LASTFM_API_KEY = get_required_env("LASTFM_API_KEY")
+LASTFM_API_SECRET = get_required_env("LASTFM_API_SECRET")
+LASTFM_USERNAME = get_required_env("LASTFM_USERNAME")
+LASTFM_PASSWORD = get_required_env("LASTFM_PASSWORD")
+
+last_fm_password_hash = pylast.md5(LASTFM_PASSWORD)
+
+
+# Last.fm network instance
+lastfm_network_instance = pylast.LastFMNetwork(
+    api_key=LASTFM_API_KEY,
+    api_secret=LASTFM_API_SECRET,
+    username=LASTFM_USERNAME,
+    password_hash=last_fm_password_hash,
+)
     
 def main() -> None:
     scoreboard: defaultdict[str, float]  = defaultdict(float)
