@@ -2,7 +2,8 @@ from collections import defaultdict
 
 import pytest
 
-from rank_artists import update_scoreboard_if_match, merge_defaultdicts, load_artists_from_file, get_required_env
+from rank_artists import update_scoreboard_if_match, merge_defaultdicts, load_artists_from_file, get_required_env, \
+    retry_with_backoff, get_similar_artists_cached, parse_args
 
 
 def test_add_score():
@@ -119,3 +120,64 @@ def test_get_required_env_returns_value(monkeypatch):
 def test_get_required_env_raises_for_missing_key():
     with pytest.raises(EnvironmentError):
         get_required_env("DOES_NOT_EXIST")
+
+def test_retry_returns_immediately():
+    result = retry_with_backoff(
+        lambda: "success",
+        retries=3,
+    )
+
+    assert result == "success"
+
+def test_retry_recovers_after_failures():
+    attempts = 0
+
+    def flaky():
+        nonlocal attempts
+
+        attempts += 1
+
+        if attempts < 3:
+            raise ValueError("temporary failure")
+
+        return "success"
+
+    result = retry_with_backoff(
+        flaky,
+        retries=3,
+    )
+
+    assert result == "success"
+    assert attempts == 3
+
+def test_similar_artists_are_cached():
+    get_similar_artists_cached.cache_clear()
+
+    calls = 0
+
+    class FakeArtist:
+        def get_similar(self, limit):
+            nonlocal calls
+            calls += 1
+            return ["Muse"]
+
+    artist = FakeArtist()
+
+    result1 = get_similar_artists_cached(artist, 10)
+    result2 = get_similar_artists_cached(artist, 10)
+
+    assert result1 == ["Muse"]
+    assert result2 == ["Muse"]
+    assert calls == 1
+
+def test_parse_args_defaults(monkeypatch):
+    monkeypatch.setattr(
+        "sys.argv",
+        ["rank_artists.py"]
+    )
+
+    args = parse_args()
+
+    assert args.depth == 3
+    assert args.breadth == 10
+    assert args.file == "artists.txt"
