@@ -123,24 +123,22 @@ def recursive_scoring_by_similar_artists(
 
 
 # Load environment variables from .env file
-load_dotenv()
+def create_lastfm_network():
+    load_dotenv()
 
+    api_key = get_required_env("LASTFM_API_KEY")
+    api_secret = get_required_env("LASTFM_API_SECRET")
+    username = get_required_env("LASTFM_USERNAME")
+    password = get_required_env("LASTFM_PASSWORD")
 
-LASTFM_API_KEY = get_required_env("LASTFM_API_KEY")
-LASTFM_API_SECRET = get_required_env("LASTFM_API_SECRET")
-LASTFM_USERNAME = get_required_env("LASTFM_USERNAME")
-LASTFM_PASSWORD = get_required_env("LASTFM_PASSWORD")
+    network = pylast.LastFMNetwork(
+        api_key=api_key,
+        api_secret=api_secret,
+        username=username,
+        password_hash=pylast.md5(password),
+    )
 
-last_fm_password_hash = pylast.md5(LASTFM_PASSWORD)
-
-
-# Last.fm network instance
-lastfm_network_instance = pylast.LastFMNetwork(
-    api_key=LASTFM_API_KEY,
-    api_secret=LASTFM_API_SECRET,
-    username=LASTFM_USERNAME,
-    password_hash=last_fm_password_hash,
-)
+    return network, username
 
 
 def main() -> None:
@@ -150,8 +148,9 @@ def main() -> None:
     max_depth = args.depth
     breadth = args.breadth
     current_depth = 1
+    lastfm_network_instance, lastfm_username = create_lastfm_network()
     top_artists = retry_with_backoff(
-        lambda: lastfm_network_instance.get_user(LASTFM_USERNAME).get_top_artists(
+        lambda: lastfm_network_instance.get_user(lastfm_username).get_top_artists(
             limit=breadth, period=pylast.PERIOD_OVERALL
         )
     )

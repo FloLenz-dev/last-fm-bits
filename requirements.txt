@@ -1,0 +1,4 @@
+pylast
+python-dotenv
+tqdm
+pytest
