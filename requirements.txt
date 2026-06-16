@@ -2,3 +2,4 @@ pylast
 python-dotenv
 tqdm
 pytest
+spotipy

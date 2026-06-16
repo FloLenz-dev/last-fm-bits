@@ -15,8 +15,8 @@ This project is meant to utilize the last.fm API for various insideful or fun us
 - TO-DO: more sophisticated clustering with better results, code-cleanup
 
 ## rank_artists.py
-- compare your Last.fm top Artists to a list of Artist (e.g. a Festival Lineup)
-- uses the similiar Artist Option of last.fm
+- Ranks a list of artists (e.g. a festival lineup) based on their similarity to your Last.fm listening history.
+- uses the similar Artist Option of last.fm
 - TO-DO: do reverse search
 
 
@@ -24,9 +24,7 @@ This project is meant to utilize the last.fm API for various insideful or fun us
 
 **install python packages**
 
-- python3 -m pip install pylast
-- python3 -m pip install python-dotenv
-- python3 -m pip install spotipy
+pip install -r requirements.txt
 
 **Obtain API Keys:**
 
@@ -36,8 +34,17 @@ This project is meant to utilize the last.fm API for various insideful or fun us
 
    - **Last.fm:**
      - Sign up or log in to [Last.fm](https://www.last.fm/api) and create an application to get your `API Key` and `API Secret`.
+  
+  Copy .env.example to .env and fill in your credentials.
+  
+# Example
+## Call
+python rank_artists.py --file artists.txt --depth 3 --breadth 10
 
-  Then replace the "dummy" values in the .env file by your obtained personal values
+## Result
+Radiohead: 5321.2
+Muse: 4820.1
+The National: 4510.3
 
-## License
+# License
 This project is licensed under the MIT License.
