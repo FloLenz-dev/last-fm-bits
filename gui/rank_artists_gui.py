@@ -111,7 +111,12 @@ with ui.column().classes('items-center w-full'):
                 max_score = max(results.values(), default=1)
                 table.rows = [
                     {
-                        'rank': rank,
+                        'rank': (
+                            '🥇' if rank == 1
+                            else '🥈' if rank == 2
+                            else '🥉' if rank == 3
+                            else rank
+                        ),
                         'artist': artist,
                         'score': round(score),
                         'tags': get_artist_tags(artist),
