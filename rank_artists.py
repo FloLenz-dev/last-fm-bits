@@ -5,7 +5,7 @@ from functools import lru_cache
 from tqdm import tqdm
 from time import sleep
 from collections import defaultdict
-from typing import List
+from typing import List, Any
 import argparse
 
 
@@ -139,6 +139,20 @@ def create_lastfm_network():
     )
 
     return network, username
+
+@lru_cache(maxsize=1000)
+def get_artist_tags(artist_name: str) -> list[Any | None]:
+
+    network, _ = create_lastfm_network()
+
+    artist = network.get_artist(artist_name)
+
+    tags = artist.get_top_tags()
+
+    return [
+        tag.item.name
+        for tag in tags[:3]
+    ]
 
 def calculate_scores(
     filepath: str,

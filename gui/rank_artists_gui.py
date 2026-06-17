@@ -1,7 +1,7 @@
 import asyncio
 from pathlib import Path
 from nicegui import ui
-from rank_artists import calculate_scores
+from rank_artists import calculate_scores, get_artist_tags
 
 PROJECT_ROOT = Path(__file__).parent.parent
 
@@ -76,6 +76,12 @@ with ui.column().classes('items-center w-full'):
                     'field': 'score',
                     'sortable': True,
                 },
+                {
+                    'name': 'tags',
+                    'label': 'Tags',
+                    'field': 'tags',
+                    'align': 'left',
+                },
             ],
             rows=[],
         ).classes('w-full')
@@ -102,12 +108,30 @@ with ui.column().classes('items-center w-full'):
                         'rank': rank,
                         'artist': artist,
                         'score': round(score),
+                        'tags': get_artist_tags(artist),
                     }
                     for rank,(artist, score) in enumerate(
                         results.items(),
                         start=1
                     )
                 ]
+
+                table.add_slot(
+                    'body-cell-tags',
+                    r'''
+                    <q-td :props="props">
+                        <q-chip
+                            v-for="tag in props.value"
+                            :key="tag"
+                            dense
+                            outline
+                            size="sm"
+                        >
+                            {{ tag }}
+                        </q-chip>
+                    </q-td>
+                    '''
+                )
 
                 table.visible = True
                 table.update()
