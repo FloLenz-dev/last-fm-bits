@@ -144,16 +144,27 @@ def calculate_scores(
     filepath: str,
     depth: int,
     breadth: int,
+    progress_callback=None,
+    status_callback=None,
 ) -> dict[str, float]:
 
+    if progress_callback is None:
+        progress_callback = lambda current, total: None
+
+    if status_callback is None:
+        status_callback = lambda message: None
+
     scoreboard: defaultdict[str, float] = defaultdict(float)
+
 
     target_artists = load_artists_from_file(filepath)
     max_depth = depth
     current_depth = 1
 
+    status_callback("Connecting to Last.fm...")
     lastfm_network_instance, lastfm_username = create_lastfm_network()
 
+    status_callback("Fetching top artists...")
     top_artists = retry_with_backoff(
         lambda: lastfm_network_instance.get_user(lastfm_username).get_top_artists(
             limit=breadth,
@@ -161,7 +172,15 @@ def calculate_scores(
         )
     )
 
-    for top_artist in tqdm(top_artists, desc="Top Artist"):
+    status_callback("Calculating scores...")
+
+    total_artists = len(top_artists)
+
+    for index, top_artist in enumerate(
+    tqdm(top_artists, desc="Top Artist"),
+        start=1
+    ):
+        progress_callback(index, total_artists)
 
         score = float(top_artist.weight)
 
@@ -233,3 +252,6 @@ def main() -> None:
 
     print("Cache-Statistik:")
     print(get_similar_artists_cached.cache_info())
+
+if __name__ == "__main__":
+    main()
