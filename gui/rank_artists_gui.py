@@ -132,15 +132,53 @@ with ui.column().classes('items-center w-full'):
                     'body-cell-tags',
                     r'''
                     <q-td :props="props">
+
                         <q-chip
                             v-for="tag in props.value"
                             :key="tag"
                             dense
                             outline
-                            size="sm"
+                            :color="[
+                                'red-4',
+                                'red-6',
+                                'pink-4',
+                                'pink-6',
+                                'purple-4',
+                                'purple-6',
+                                'deep-purple-4',
+                                'deep-purple-6',
+                                'indigo-4',
+                                'indigo-6',
+                                'blue-4',
+                                'blue-6',
+                                'light-blue-4',
+                                'light-blue-6',
+                                'cyan-4',
+                                'cyan-6',
+                                'teal-4',
+                                'teal-6',
+                                'green-4',
+                                'green-6',
+                                'light-green-4',
+                                'light-green-6',
+                                'lime-4',
+                                'lime-6',
+                                'yellow-7',
+                                'amber-6',
+                                'orange-5',
+                                'deep-orange-5',
+                                'brown-5',
+                                'blue-grey-5'
+                            ][
+                                tag.split('').reduce(
+                                    (a, c) => a + c.charCodeAt(0),
+                                    0
+                                ) % 30
+                            ]"
                         >
                             {{ tag }}
                         </q-chip>
+
                     </q-td>
                     '''
                 )
