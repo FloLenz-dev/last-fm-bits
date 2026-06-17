@@ -140,51 +140,96 @@ def create_lastfm_network():
 
     return network, username
 
+def calculate_scores(
+    filepath: str,
+    depth: int,
+    breadth: int,
+) -> dict[str, float]:
 
-def main() -> None:
-    args = parse_args()
     scoreboard: defaultdict[str, float] = defaultdict(float)
-    target_artists = load_artists_from_file(args.file)
-    max_depth = args.depth
-    breadth = args.breadth
+
+    target_artists = load_artists_from_file(filepath)
+    max_depth = depth
     current_depth = 1
+
     lastfm_network_instance, lastfm_username = create_lastfm_network()
+
     top_artists = retry_with_backoff(
         lambda: lastfm_network_instance.get_user(lastfm_username).get_top_artists(
-            limit=breadth, period=pylast.PERIOD_OVERALL
+            limit=breadth,
+            period=pylast.PERIOD_OVERALL,
         )
     )
 
     for top_artist in tqdm(top_artists, desc="Top Artist"):
 
-        score = float(
-            top_artist.weight
-        )  # How popular ist the artist with the user? top_artist.weight is an int, but since score is an float...
+        score = float(top_artist.weight)
+
         scoreboard = update_scoreboard_if_match(
-            scoreboard, target_artists, top_artist.item.name, score
-        )  # if top_artist is in input list, add it to scoring list
+            scoreboard,
+            target_artists,
+            top_artist.item.name,
+            score,
+        )
+
         for similar_artist in tqdm(
             retry_with_backoff(
-                lambda: get_similar_artists_cached(top_artist.item, args.breadth)
+                lambda: get_similar_artists_cached(
+                    top_artist.item,
+                    breadth,
+                )
             ),
             desc=f"Similar to {top_artist.item.name}",
             leave=False,
         ):
-            score_similar_artist = float(top_artist.weight) * float(similar_artist.match) #How popular is the top artist with the use * how similar is the similar artist?
-            scoreboard = update_scoreboard_if_match(scoreboard, target_artists, similar_artist.item.name, score_similar_artist)
+
+            score_similar_artist = (
+                float(top_artist.weight)
+                * float(similar_artist.match)
+            )
+
+            scoreboard = update_scoreboard_if_match(
+                scoreboard,
+                target_artists,
+                similar_artist.item.name,
+                score_similar_artist,
+            )
+
             if current_depth == max_depth:
                 break
-            scoreboard =  merge_defaultdicts(scoreboard, recursive_scoring_by_similar_artists(similar_artist, score_similar_artist, target_artists, breadth, current_depth + 1 , max_depth))
 
-    sorted_artists = dict(
-        sorted(scoreboard.items(), key=lambda item: item[1], reverse=True)
-    )  # sort descending by score
+            scoreboard = merge_defaultdicts(
+                scoreboard,
+                recursive_scoring_by_similar_artists(
+                    similar_artist,
+                    score_similar_artist,
+                    target_artists,
+                    breadth,
+                    current_depth + 1,
+                    max_depth,
+                ),
+            )
+
+    return dict(
+        sorted(
+            scoreboard.items(),
+            key=lambda item: item[1],
+            reverse=True,
+        )
+    )
+
+
+def main() -> None:
+    args = parse_args()
+
+    sorted_artists = calculate_scores(
+        filepath=args.file,
+        depth=args.depth,
+        breadth=args.breadth,
+    )
 
     for artist, score in sorted_artists.items():
         print(f"{artist}: {round(score, 2)}")
+
     print("Cache-Statistik:")
     print(get_similar_artists_cached.cache_info())
-
-
-if __name__ == "__main__":
-    main()
