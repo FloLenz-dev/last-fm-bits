@@ -71,6 +71,12 @@ with ui.column().classes('items-center w-full'):
                     'align': 'left',
                 },
                 {
+                    'name': 'bar',
+                    'label': 'Match',
+                    'field': 'bar',
+                    'align': 'left',
+                },
+                {
                     'name': 'score',
                     'label': 'Score',
                     'field': 'score',
@@ -102,15 +108,16 @@ with ui.column().classes('items-center w-full'):
                     depth=int(depth_input.value),
                     breadth=int(breadth_input.value),
                 )
-
+                max_score = max(results.values(), default=1)
                 table.rows = [
                     {
                         'rank': rank,
                         'artist': artist,
                         'score': round(score),
                         'tags': get_artist_tags(artist),
+                        'bar': round(score / max_score * 100),
                     }
-                    for rank,(artist, score) in enumerate(
+                    for rank, (artist, score) in enumerate(
                         results.items(),
                         start=1
                     )
@@ -129,6 +136,19 @@ with ui.column().classes('items-center w-full'):
                         >
                             {{ tag }}
                         </q-chip>
+                    </q-td>
+                    '''
+                )
+
+                table.add_slot(
+                    'body-cell-bar',
+                    r'''
+                    <q-td :props="props">
+                        <q-linear-progress
+                            :value="props.value / 100"
+                            size="12px"
+                            rounded
+                        />
                     </q-td>
                     '''
                 )
