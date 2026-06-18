@@ -11,13 +11,26 @@ from collections import defaultdict
 from typing import List, Any
 import argparse
 
-
 @dataclass
 class ArtistScore:
     total_score: float = 0.0
     sources: defaultdict[str, float] = field(
         default_factory=lambda: defaultdict(float)
     )
+
+    @property
+    def top_contributors(self) -> list[str]:
+        if not self.sources:
+            return []
+
+        return [
+            f"{artist} ({score / self.total_score:.0%})"
+            for artist, score in sorted(
+                self.sources.items(),
+                key=lambda item: item[1],
+                reverse=True,
+            )[:3]
+        ]
 
 def parse_args():
     parser = argparse.ArgumentParser(
@@ -135,7 +148,7 @@ def recursive_scoring_by_similar_artists(
         desc=f"Similar to {artist.item.name}",
         leave=False,
     ):
-        score_similar_artist = score_parent_artist * float(similar_artist.match) 
+        score_similar_artist = score_parent_artist * float(similar_artist.match)
         scoreboard =  update_scoreboard_if_match (
             scoreboard, target_artists, similar_artist.item.get_name(), score_similar_artist, root_artist
         )

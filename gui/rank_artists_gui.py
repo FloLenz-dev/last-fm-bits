@@ -9,7 +9,7 @@ ui.page_title('Last.fm Artist Matcher')
 
 with ui.column().classes('items-center w-full'):
 
-    with ui.card().classes('w-full max-w-4xl'):
+    with ui.card().classes('w-full max-w-7xl'):
 
         ui.label(
             '🎵 Last.fm Artist Matcher'
@@ -88,6 +88,13 @@ with ui.column().classes('items-center w-full'):
                     'field': 'tags',
                     'align': 'left',
                 },
+                {
+                    'name': 'top_contributors',
+                    'label': 'Top Contributors',
+                    'field': 'top_contributors',
+                    'sortable': True,
+                    'align': 'left',
+                }
             ],
             rows=[],
         ).classes('w-full')
@@ -108,7 +115,12 @@ with ui.column().classes('items-center w-full'):
                     depth=int(depth_input.value),
                     breadth=int(breadth_input.value),
                 )
-                max_score = max(results.values(), default=1)
+
+                max_score = max(
+                    (score.total_score for score in results.values()),
+                    default=1,
+                )
+
                 table.rows = [
                     {
                         'rank': (
@@ -118,11 +130,16 @@ with ui.column().classes('items-center w-full'):
                             else rank
                         ),
                         'artist': artist,
-                        'score': round(score),
+                        'top_contributors': ', '.join(
+                            score_data.top_contributors
+                        ),
+                        'score': round(score_data.total_score),
                         'tags': get_artist_tags(artist),
-                        'bar': round(score / max_score * 100),
+                        'bar': round(
+                            score_data.total_score / max_score * 100
+                        ),
                     }
-                    for rank, (artist, score) in enumerate(
+                    for rank, (artist, score_data) in enumerate(
                         results.items(),
                         start=1
                     )
