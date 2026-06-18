@@ -1,4 +1,7 @@
 import os
+from copy import deepcopy
+from dataclasses import dataclass, field
+
 import pylast
 from dotenv import load_dotenv
 from functools import lru_cache
@@ -8,6 +11,13 @@ from collections import defaultdict
 from typing import List, Any
 import argparse
 
+
+@dataclass
+class ArtistScore:
+    total_score: float = 0.0
+    sources: defaultdict[str, float] = field(
+        default_factory=lambda: defaultdict(float)
+    )
 
 def parse_args():
     parser = argparse.ArgumentParser(
@@ -70,15 +80,17 @@ def get_similar_artists_cached(
 
 
 def update_scoreboard_if_match(
-    scoreboard: defaultdict[str, float],
+    scoreboard: defaultdict[str, ArtistScore],
     target_artists: set[str],
     artist: str,
     score: float,
-) -> defaultdict[str, float]:
+    root_artist: str,
+) -> defaultdict[str, ArtistScore]:
     """Adds or updates an artist's score in the scoring list if the artist is in the input list"""
 
     if artist in target_artists:
-        scoreboard[artist] += score
+        scoreboard[artist].total_score += score
+        scoreboard[artist].sources[root_artist] += score
     return scoreboard
 
 
@@ -87,38 +99,52 @@ def load_artists_from_file(filepath: str = "artists.txt") -> set[str]:
         return {line.strip() for line in file if line.strip()}
 
 
-def merge_defaultdicts(
-    a: defaultdict[str, float], b: dict[str, float]
-) -> defaultdict[str, float]:
-    result = defaultdict(float, a)  # copy of a
-    for key, value in b.items():
-        result[key] += value
+def merge_scoreboards(
+    scoreboard1: defaultdict[str, ArtistScore],
+    scoreboard2: defaultdict[str, ArtistScore],
+) -> defaultdict[str, ArtistScore]:
+
+    result = deepcopy(scoreboard1)
+    for artist, score_data in scoreboard2.items():
+        result[artist].total_score += score_data.total_score
+
+        for source, contribution in score_data.sources.items():
+            result[artist].sources[source] += contribution
+
     return result
 
 
 def recursive_scoring_by_similar_artists(
     artist: pylast.SimilarItem,
+    root_artist: str,
     score_parent_artist: float,
     target_artists: set[str],
     breadth: int,
     current_depth: int,
     max_depth: int,
-) -> defaultdict[str, float]:
-    """score by artist similarity, recursivly look at neighbours of neighbours"""
-    scoreboard: defaultdict[str, float] = defaultdict(float)
+) -> defaultdict[str, ArtistScore]:
+    """score by artist similarity, recursively look at neighbors of neighbors"""
+    scoreboard: defaultdict[str, ArtistScore] = defaultdict(ArtistScore)
 
     if current_depth >= max_depth:
         return scoreboard  # terminate if maximum depth is reached
 
-    # else look for neighbours of provided artists calculate their similarity scores, add them if suitable and call the function recursivly again
+    # else look for neighbors of provided artists calculate their similarity scores, add them if suitable and call the function recursively again
     for similar_artist in tqdm(
         retry_with_backoff(lambda: get_similar_artists_cached(artist.item, breadth)),
         desc=f"Similar to {artist.item.name}",
         leave=False,
     ):
         score_similar_artist = score_parent_artist * float(similar_artist.match) 
-        scoreboard =  update_scoreboard_if_match (scoreboard, target_artists, similar_artist.item.get_name(), score_similar_artist)
-        scoreboard =  merge_defaultdicts(scoreboard, recursive_scoring_by_similar_artists(similar_artist, score_similar_artist, target_artists, breadth, current_depth +1 , max_depth))
+        scoreboard =  update_scoreboard_if_match (
+            scoreboard, target_artists, similar_artist.item.get_name(), score_similar_artist, root_artist
+        )
+        scoreboard =  merge_scoreboards(
+            scoreboard,
+            recursive_scoring_by_similar_artists(
+                similar_artist, root_artist, score_similar_artist, target_artists, breadth, current_depth +1 , max_depth
+            )
+        )
     return scoreboard
 
 
@@ -160,7 +186,7 @@ def calculate_scores(
     breadth: int,
     progress_callback=None,
     status_callback=None,
-) -> dict[str, float]:
+) -> dict[str, ArtistScore]:
 
     if progress_callback is None:
         progress_callback = lambda current, total: None
@@ -168,7 +194,7 @@ def calculate_scores(
     if status_callback is None:
         status_callback = lambda message: None
 
-    scoreboard: defaultdict[str, float] = defaultdict(float)
+    scoreboard: defaultdict[str, ArtistScore] = defaultdict(ArtistScore)
 
 
     target_artists = load_artists_from_file(filepath)
@@ -203,6 +229,7 @@ def calculate_scores(
             target_artists,
             top_artist.item.name,
             score,
+            top_artist.item.name,
         )
 
         for similar_artist in tqdm(
@@ -226,15 +253,17 @@ def calculate_scores(
                 target_artists,
                 similar_artist.item.name,
                 score_similar_artist,
+                top_artist.item.name
             )
 
             if current_depth == max_depth:
                 break
 
-            scoreboard = merge_defaultdicts(
+            scoreboard = merge_scoreboards(
                 scoreboard,
                 recursive_scoring_by_similar_artists(
                     similar_artist,
+                    top_artist.item.name,
                     score_similar_artist,
                     target_artists,
                     breadth,
@@ -246,7 +275,7 @@ def calculate_scores(
     return dict(
         sorted(
             scoreboard.items(),
-            key=lambda item: item[1],
+            key=lambda item: item[1].total_score,
             reverse=True,
         )
     )
@@ -261,10 +290,10 @@ def main() -> None:
         breadth=args.breadth,
     )
 
-    for artist, score in sorted_artists.items():
-        print(f"{artist}: {round(score, 2)}")
+    for artist, score_data in sorted_artists.items():
+        print(f"{artist}: {score_data.total_score:.2f}")
 
-    print("Cache-Statistik:")
+    print("Cache-Statistic:")
     print(get_similar_artists_cached.cache_info())
 
 if __name__ == "__main__":
