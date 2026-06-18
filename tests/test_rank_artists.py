@@ -2,30 +2,33 @@ from collections import defaultdict
 
 import pytest
 
-from rank_artists import update_scoreboard_if_match, merge_defaultdicts, load_artists_from_file, get_required_env, \
-    retry_with_backoff, get_similar_artists_cached, parse_args
+from rank_artists import update_scoreboard_if_match, load_artists_from_file, get_required_env, \
+    retry_with_backoff, get_similar_artists_cached, parse_args, merge_scoreboards, ArtistScore
 
 
 def test_add_score():
-    scoreboard = defaultdict(float)
+    scoreboard = defaultdict(ArtistScore)
 
     update_scoreboard_if_match(
         scoreboard,
         {"Radiohead"},
         "Radiohead",
         5.0,
+        root_artist="Rainbow"
     )
 
-    assert scoreboard["Radiohead"] == 5.0
+    assert scoreboard["Radiohead"].total_score == 5.0
+    assert scoreboard["Radiohead"].sources["Rainbow"] == 5.0
 
 def test_score_accumulates():
-    scoreboard = defaultdict(float)
+    scoreboard = defaultdict(ArtistScore)
 
     update_scoreboard_if_match(
         scoreboard,
         {"Radiohead"},
         "Radiohead",
         5.0,
+        'Rainbow'
     )
 
     update_scoreboard_if_match(
@@ -33,60 +36,95 @@ def test_score_accumulates():
         {"Radiohead"},
         "Radiohead",
         2.0,
+        'Rainbow'
     )
 
-    assert scoreboard["Radiohead"] == 7.0
+    assert scoreboard["Radiohead"].total_score == 7.0
+    assert scoreboard["Radiohead"].sources['Rainbow'] == 7.0
 
 def test_artist_not_in_target_is_ignored():
-    scoreboard = defaultdict(float)
+    scoreboard = defaultdict(ArtistScore)
 
     update_scoreboard_if_match(
         scoreboard,
         {"Radiohead"},
         "Muse",
         5.0,
+        root_artist="Muse"
     )
 
     assert len(scoreboard) == 0
 
 def test_non_matching_artist_does_not_modify_existing_score():
-    scoreboard = defaultdict(float)
-    scoreboard["Radiohead"] = 10.0
+    scoreboard = defaultdict(ArtistScore)
+    scoreboard["Radiohead"].total_score = 10.0
 
     update_scoreboard_if_match(
         scoreboard,
         {"Radiohead"},
         "Muse",
         5.0,
+        'Rainbow'
     )
 
-    assert scoreboard["Radiohead"] == 10.0
-
-def test_merge_adds_existing_keys():
-    a = defaultdict(float, {"Radiohead": 5.0})
-    b = {"Radiohead": 2.0}
-
-    result = merge_defaultdicts(a, b)
-
-    assert result["Radiohead"] == 7.0
+    assert scoreboard["Radiohead"].total_score == 10.0
 
 def test_merge_adds_new_keys():
-    a = defaultdict(float, {"Radiohead": 5.0})
-    b = {"Muse": 2.0}
+    a = defaultdict(
+        ArtistScore,
+        {
+            "Radiohead": ArtistScore(
+                total_score=5.0,
+                sources=defaultdict(float, {"Tool": 5.0}),
+            )
+        },
+    )
 
-    result = merge_defaultdicts(a, b)
+    b = defaultdict(
+        ArtistScore,
+        {
+            "Muse": ArtistScore(
+                total_score=2.0,
+                sources=defaultdict(float, {"Aphex Twin": 2.0}),
+            )
+        },
+    )
 
-    assert result["Radiohead"] == 5.0
-    assert result["Muse"] == 2.0
+    result = merge_scoreboards(a, b)
+
+    assert result["Radiohead"].total_score == 5.0
+    assert result["Radiohead"].sources["Tool"] == 5.0
+    assert result["Muse"].total_score == 2.0
+    assert result["Muse"].sources["Aphex Twin"] == 2.0
 
 def test_merge_does_not_modify_original():
-    a = defaultdict(float, {"Radiohead": 5.0})
-    b = {"Radiohead": 2.0}
+    a = defaultdict(
+        ArtistScore,
+        {
+            "Radiohead": ArtistScore(
+                total_score=5.0,
+                sources=defaultdict(float, {"Tool": 5.0}),
+            )
+        },
+    )
 
-    result = merge_defaultdicts(a, b)
+    b = defaultdict(
+        ArtistScore,
+        {
+            "Radiohead": ArtistScore(
+                total_score=2.0,
+                sources=defaultdict(float, {"Aphex Twin": 2.0}),
+            )
+        },
+    )
 
-    assert a["Radiohead"] == 5.0
-    assert result["Radiohead"] == 7.0
+    result = merge_scoreboards(a, b)
+
+    assert a["Radiohead"].total_score == 5.0
+
+    assert result["Radiohead"].total_score == 7.0
+    assert result["Radiohead"].sources["Tool"] == 5.0
+    assert result["Radiohead"].sources["Aphex Twin"] == 2.0
 
 def test_load_artists_removes_duplicates(tmp_path):
     file = tmp_path / "artists.txt"
