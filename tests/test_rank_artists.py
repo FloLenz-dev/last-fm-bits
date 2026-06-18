@@ -1,9 +1,10 @@
 from collections import defaultdict
+from unittest.mock import Mock
 
 import pytest
 
 from rank_artists import update_scoreboard_if_match, load_artists_from_file, get_required_env, \
-    retry_with_backoff, get_similar_artists_cached, parse_args, merge_scoreboards, ArtistScore
+    retry_with_backoff, get_similar_artists_cached, parse_args, merge_scoreboards, ArtistScore, calculate_scores
 
 
 def test_add_score():
@@ -219,3 +220,111 @@ def test_parse_args_defaults(monkeypatch):
     assert args.depth == 3
     assert args.breadth == 10
     assert args.file == "artists.txt"
+
+class MockArtist:
+    def __init__(self, name):
+        self.name = name
+
+    def get_name(self):
+        return self.name
+
+class MockSimilarItem:
+    def __init__(self, artist_name, match):
+        self.item = MockArtist(artist_name)
+        self.match = match
+
+class MockTopArtist:
+    def __init__(self, artist_name, weight):
+        self.item = MockArtist(artist_name)
+        self.weight = weight
+
+@pytest.fixture
+def artists_file(tmp_path):
+    file = tmp_path / "artists.txt"
+    file.write_text(
+        "\n".join([
+            "Muse",
+            "Blur",
+            "Placebo",
+            "Archive",
+            "Poison",
+            "Cinderella",
+        ])
+    )
+    return str(file)
+
+def test_calculate_scores(artists_file, monkeypatch):
+    top_artists = [
+        MockTopArtist("Radiohead", 100),
+        MockTopArtist("Muse", 50),
+    ]
+
+    def fake_create_lastfm_network():
+        user = Mock()
+
+        user.get_top_artists.return_value = top_artists
+
+        network = Mock()
+        network.get_user.return_value = user
+
+        return network, "testuser"
+
+    def fake_get_similar_artists_cached(artist, breadth):
+        mapping = {
+            "Radiohead": [
+                MockSimilarItem("Muse", 0.8),
+                MockSimilarItem("Blur", 0.6),
+                MockSimilarItem("Coldplay", 0.4),
+            ],
+            "Muse": [
+                MockSimilarItem("Placebo", 0.5),
+                MockSimilarItem("Archive", 0.25),
+            ],
+            "Blur": [
+                MockSimilarItem("Placebo", 0.5),
+                MockSimilarItem("Poison", 0.5),
+            ],
+            "Poison": [
+                MockSimilarItem("Cinderella", 0.5),
+            ]
+        }
+
+        return mapping.get(artist.name, [])
+
+    monkeypatch.setattr(
+        "rank_artists.create_lastfm_network",
+        fake_create_lastfm_network,
+    )
+
+    monkeypatch.setattr(
+        "rank_artists.get_similar_artists_cached",
+        fake_get_similar_artists_cached,
+    )
+
+    scores = calculate_scores(
+        filepath=artists_file,
+        depth=3,
+        breadth=10,
+    )
+
+    assert "Muse" in scores
+    assert "Blur" in scores
+    assert "Archive" in scores
+    assert "Placebo" in scores
+    assert "Poison" in scores
+
+    assert "Radiohead" not in scores
+    assert "Coldplay" not in scores
+    assert "Cinderella" not in scores
+
+    assert scores["Muse"].total_score == 130
+    assert scores["Blur"].total_score == 60
+    assert scores["Archive"].total_score == 32.5
+    assert scores["Placebo"].total_score == 95
+
+    assert scores["Placebo"].sources["Radiohead"] == 70
+
+    assert scores["Placebo"].sources == {
+        "Radiohead": 70,
+        "Muse": 25,
+    }
