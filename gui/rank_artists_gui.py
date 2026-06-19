@@ -1,9 +1,26 @@
 import asyncio
+import uuid
 from pathlib import Path
 from nicegui import ui
 from rank_artists import calculate_scores, get_artist_tags
+import tempfile
 
 PROJECT_ROOT = Path(__file__).parent.parent
+
+upload_state = {
+    'path': None,
+}
+
+async def handle_upload(e):
+
+    upload_state['path'] = (
+            Path(tempfile.gettempdir()) /
+            f'{uuid.uuid4()}.txt'
+    )
+
+    data = await e.file.read()
+    upload_state['path'].write_bytes(data)
+    status.set_text(f'Geladen: {e.file.name}')
 
 ui.page_title('Last.fm Artist Matcher')
 
@@ -23,14 +40,15 @@ with ui.column().classes('items-center w-full'):
             'text-gray-500'
         )
 
-        status = ui.label('Ready')
-
         spinner = ui.spinner(size='lg')
         spinner.visible = False
 
-        file_input = ui.input(
+        upload = ui.upload(
             label='Artist File',
-            value=str(PROJECT_ROOT / 'artists.txt'),
+            on_upload=handle_upload,
+            auto_upload=True,
+        ).props(
+            'accept=.txt'
         ).classes(
             'w-full'
         )
@@ -109,9 +127,13 @@ with ui.column().classes('items-center w-full'):
             try:
                 status.set_text('Running analysis...')
 
+                if upload_state['path'] is None:
+                    status.set_text('Bitte zuerst eine Datei hochladen.')
+                    return
+
                 results = await asyncio.to_thread(
                     calculate_scores,
-                    filepath=file_input.value,
+                    filepath=str(upload_state['path']),
                     depth=int(depth_input.value),
                     breadth=int(breadth_input.value),
                 )
