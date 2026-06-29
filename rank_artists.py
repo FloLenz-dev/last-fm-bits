@@ -73,6 +73,15 @@ def retry_with_backoff(func, *args, retries=10, wait_time=600, **kwargs):
         try:
             return func(*args, **kwargs)
         except Exception as e:
+
+            msg = str(e).lower()
+
+            if "could not be found" in msg:
+                tqdm.write(
+                    f"Skipping permanently invalid artist: {e}"
+                )
+                return []
+
             attempt += 1
             if attempt < retries:
                 tqdm.write(f"Error: {e}, retrying...")
@@ -84,7 +93,7 @@ def retry_with_backoff(func, *args, retries=10, wait_time=600, **kwargs):
                 wait_time += 600
 
 
-@lru_cache(maxsize=100000)
+@lru_cache(maxsize=1000000)
 def get_similar_artists_cached(
     artist: pylast.Artist, breadth=10
 ) -> List[pylast.SimilarItem]:
@@ -143,11 +152,7 @@ def recursive_scoring_by_similar_artists(
         return scoreboard  # terminate if maximum depth is reached
 
     # else look for neighbors of provided artists calculate their similarity scores, add them if suitable and call the function recursively again
-    for similar_artist in tqdm(
-        retry_with_backoff(lambda: get_similar_artists_cached(artist.item, breadth)),
-        desc=f"Similar to {artist.item.name}",
-        leave=False,
-    ):
+    for similar_artist in retry_with_backoff(lambda: get_similar_artists_cached(artist.item, breadth)):
         score_similar_artist = score_parent_artist * float(similar_artist.match)
         scoreboard =  update_scoreboard_if_match (
             scoreboard, target_artists, similar_artist.item.get_name(), score_similar_artist, root_artist
@@ -245,16 +250,12 @@ def calculate_scores(
             top_artist.item.name,
         )
 
-        for similar_artist in tqdm(
-            retry_with_backoff(
-                lambda: get_similar_artists_cached(
+        if current_depth == max_depth:
+            break
+
+        for similar_artist in get_similar_artists_cached(
                     top_artist.item,
-                    breadth,
-                )
-            ),
-            desc=f"Similar to {top_artist.item.name}",
-            leave=False,
-        ):
+                    breadth):
 
             score_similar_artist = (
                 float(top_artist.weight)
@@ -268,9 +269,6 @@ def calculate_scores(
                 score_similar_artist,
                 top_artist.item.name
             )
-
-            if current_depth == max_depth:
-                break
 
             scoreboard = merge_scoreboards(
                 scoreboard,

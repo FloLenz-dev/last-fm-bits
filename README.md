@@ -37,6 +37,9 @@ pip install -r requirements.txt
   
   Copy .env.example to .env and fill in your credentials.
   
+**for new_songs_favourite_bands bit: Get a Spotify Premium account**
+The use of the Spotify API requires an account with active premium subscription
+
 # Example
 ## Call
 python rank_artists.py --file artists.txt --depth 3 --breadth 10
