@@ -1,15 +1,15 @@
+import argparse
 import os
+from collections import defaultdict
 from copy import deepcopy
 from dataclasses import dataclass, field
+from functools import lru_cache
+from time import sleep
 
 import pylast
 from dotenv import load_dotenv
-from functools import lru_cache
 from tqdm import tqdm
-from time import sleep
-from collections import defaultdict
-from typing import List, Any
-import argparse
+
 
 @dataclass
 class ArtistScore:
@@ -63,7 +63,7 @@ def parse_args():
 def get_required_env(key: str) -> str:
     value = os.getenv(key)
     if value is None:
-        raise EnvironmentError(f"Environment variable {key} is required")
+        raise OSError(f"Environment variable {key} is required")
     return value
 
 
@@ -96,7 +96,7 @@ def retry_with_backoff(func, *args, retries=10, wait_time=600, **kwargs):
 @lru_cache(maxsize=1000000)
 def get_similar_artists_cached(
     artist: pylast.Artist, breadth=10
-) -> List[pylast.SimilarItem]:
+) -> list[pylast.SimilarItem]:
     """Retrieves similar artists for a given artist, with caching for performance reasons"""
     return artist.get_similar(limit=breadth)
 
@@ -106,6 +106,7 @@ def update_scoreboard_if_match(
     target_artists: set[str],
     artist: str,
     score: float,
+    *,
     root_artist: str,
 ) -> defaultdict[str, ArtistScore]:
     """Adds or updates an artist's score in the scoring list if the artist is in the input list"""
@@ -154,13 +155,13 @@ def recursive_scoring_by_similar_artists(
     # else look for neighbors of provided artists calculate their similarity scores, add them if suitable and call the function recursively again
     for similar_artist in retry_with_backoff(lambda: get_similar_artists_cached(artist.item, breadth)):
         score_similar_artist = score_parent_artist * float(similar_artist.match)
-        scoreboard =  update_scoreboard_if_match (
-            scoreboard, target_artists, similar_artist.item.get_name(), score_similar_artist, root_artist
+        scoreboard = update_scoreboard_if_match(
+            scoreboard, target_artists, similar_artist.item.get_name(), score_similar_artist, root_artist=root_artist
         )
-        scoreboard =  merge_scoreboards(
+        scoreboard = merge_scoreboards(
             scoreboard,
             recursive_scoring_by_similar_artists(
-                similar_artist, root_artist, score_similar_artist, target_artists, breadth, current_depth +1 , max_depth
+                similar_artist, root_artist, score_similar_artist, target_artists, breadth, current_depth + 1, max_depth
             )
         )
     return scoreboard
@@ -185,7 +186,7 @@ def create_lastfm_network():
     return network, username
 
 @lru_cache(maxsize=1000)
-def get_artist_tags(artist_name: str) -> list[Any | None]:
+def get_artist_tags(artist_name: str) -> list[str]:
 
     network, _ = create_lastfm_network()
 
@@ -214,10 +215,8 @@ def calculate_scores(
 
     scoreboard: defaultdict[str, ArtistScore] = defaultdict(ArtistScore)
 
-
     target_artists = load_artists_from_file(filepath)
     max_depth = depth
-    current_depth = 1
 
     status_callback("Connecting to Last.fm...")
     lastfm_network_instance, lastfm_username = create_lastfm_network()
@@ -235,8 +234,8 @@ def calculate_scores(
     total_artists = len(top_artists)
 
     for index, top_artist in enumerate(
-    tqdm(top_artists, desc="Top Artist"),
-        start=1
+        tqdm(top_artists, desc="Top Artist"),
+        start=1,
     ):
         progress_callback(index, total_artists)
 
@@ -247,11 +246,11 @@ def calculate_scores(
             target_artists,
             top_artist.item.name,
             score,
-            top_artist.item.name,
+            root_artist=top_artist.item.name,
         )
 
-        if current_depth == max_depth:
-            break
+        if max_depth <= 1:
+            continue
 
         for similar_artist in get_similar_artists_cached(
                     top_artist.item,
@@ -267,7 +266,7 @@ def calculate_scores(
                 target_artists,
                 similar_artist.item.name,
                 score_similar_artist,
-                top_artist.item.name
+                root_artist=top_artist.item.name,
             )
 
             scoreboard = merge_scoreboards(
@@ -278,7 +277,8 @@ def calculate_scores(
                     score_similar_artist,
                     target_artists,
                     breadth,
-                    current_depth + 1,
+                    # top artist itself = depth 1, its similar artists = depth 2
+                    2,
                     max_depth,
                 ),
             )

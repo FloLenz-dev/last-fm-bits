@@ -3,8 +3,17 @@ from unittest.mock import Mock
 
 import pytest
 
-from rank_artists import update_scoreboard_if_match, load_artists_from_file, get_required_env, \
-    retry_with_backoff, get_similar_artists_cached, parse_args, merge_scoreboards, ArtistScore, calculate_scores
+from rank_artists import (
+    ArtistScore,
+    calculate_scores,
+    get_required_env,
+    get_similar_artists_cached,
+    load_artists_from_file,
+    merge_scoreboards,
+    parse_args,
+    retry_with_backoff,
+    update_scoreboard_if_match,
+)
 
 
 def test_add_score():
@@ -15,7 +24,7 @@ def test_add_score():
         {"Radiohead"},
         "Radiohead",
         5.0,
-        root_artist="Rainbow"
+        root_artist="Rainbow",
     )
 
     assert scoreboard["Radiohead"].total_score == 5.0
@@ -29,7 +38,7 @@ def test_score_accumulates():
         {"Radiohead"},
         "Radiohead",
         5.0,
-        'Rainbow'
+        root_artist="Rainbow",
     )
 
     update_scoreboard_if_match(
@@ -37,11 +46,11 @@ def test_score_accumulates():
         {"Radiohead"},
         "Radiohead",
         2.0,
-        'Rainbow'
+        root_artist="Rainbow",
     )
 
     assert scoreboard["Radiohead"].total_score == 7.0
-    assert scoreboard["Radiohead"].sources['Rainbow'] == 7.0
+    assert scoreboard["Radiohead"].sources["Rainbow"] == 7.0
 
 def test_artist_not_in_target_is_ignored():
     scoreboard = defaultdict(ArtistScore)
@@ -51,7 +60,7 @@ def test_artist_not_in_target_is_ignored():
         {"Radiohead"},
         "Muse",
         5.0,
-        root_artist="Muse"
+        root_artist="Muse",
     )
 
     assert len(scoreboard) == 0
@@ -65,7 +74,7 @@ def test_non_matching_artist_does_not_modify_existing_score():
         {"Radiohead"},
         "Muse",
         5.0,
-        'Rainbow'
+        root_artist="Rainbow",
     )
 
     assert scoreboard["Radiohead"].total_score == 10.0
@@ -157,7 +166,7 @@ def test_get_required_env_returns_value(monkeypatch):
     assert get_required_env("TEST_KEY") == "hello"
 
 def test_get_required_env_raises_for_missing_key():
-    with pytest.raises(EnvironmentError):
+    with pytest.raises(OSError):
         get_required_env("DOES_NOT_EXIST")
 
 def test_retry_returns_immediately():
@@ -188,6 +197,52 @@ def test_retry_recovers_after_failures():
 
     assert result == "success"
     assert attempts == 3
+
+def test_retry_returns_empty_list_for_permanently_invalid_artist():
+    calls = 0
+
+    def always_not_found():
+        nonlocal calls
+        calls += 1
+        raise ValueError("Artist could not be found")
+
+    result = retry_with_backoff(
+        always_not_found,
+        retries=3,
+    )
+
+    assert result == []
+    assert calls == 1
+
+def test_retry_waits_before_retrying_after_max_attempts(monkeypatch):
+    sleep_calls = []
+
+    monkeypatch.setattr(
+        "rank_artists.sleep",
+        lambda seconds: sleep_calls.append(seconds),
+    )
+
+    attempts = 0
+
+    def flaky():
+        nonlocal attempts
+
+        attempts += 1
+
+        if attempts < 3:
+            raise ValueError("temporary failure")
+
+        return "success"
+
+    result = retry_with_backoff(
+        flaky,
+        retries=2,
+        wait_time=600,
+    )
+
+    assert result == "success"
+    assert attempts == 3
+    assert sleep_calls == [600]
 
 def test_similar_artists_are_cached():
     get_similar_artists_cached.cache_clear()
@@ -220,6 +275,18 @@ def test_parse_args_defaults(monkeypatch):
     assert args.depth == 3
     assert args.breadth == 10
     assert args.file == "artists.txt"
+
+def test_parse_args_explicit_values(monkeypatch):
+    monkeypatch.setattr(
+        "sys.argv",
+        ["rank_artists.py", "-f", "lineup.txt", "-d", "5", "-b", "20"]
+    )
+
+    args = parse_args()
+
+    assert args.file == "lineup.txt"
+    assert args.depth == 5
+    assert args.breadth == 20
 
 class MockArtist:
     def __init__(self, name):
@@ -328,3 +395,53 @@ def test_calculate_scores(artists_file, monkeypatch):
         "Radiohead": 70,
         "Muse": 25,
     }
+
+def _mock_top_artists_network(top_artists):
+    def fake_create_lastfm_network():
+        user = Mock()
+        user.get_top_artists.return_value = top_artists
+
+        network = Mock()
+        network.get_user.return_value = user
+
+        return network, "testuser"
+
+    return fake_create_lastfm_network
+
+def test_calculate_scores_depth_1_scores_every_top_artist(tmp_path, monkeypatch):
+    """
+    Regression test: at depth=1, every top artist must receive its own
+    direct score. Only the traversal into *similar* artists is skipped -
+    processing of subsequent top artists must not be aborted.
+
+    (Previously, `calculate_scores` aborted the entire top-artist loop
+    after the first artist at depth=1, silently dropping all following
+    top artists - including their own direct score.)
+    """
+    artists_file = tmp_path / "artists.txt"
+    artists_file.write_text("Radiohead\nMuse\nBlur")
+
+    top_artists = [
+        MockTopArtist("Radiohead", 100),
+        MockTopArtist("Muse", 50),
+        MockTopArtist("Blur", 30),
+    ]
+
+    monkeypatch.setattr(
+        "rank_artists.create_lastfm_network",
+        _mock_top_artists_network(top_artists),
+    )
+    monkeypatch.setattr(
+        "rank_artists.get_similar_artists_cached",
+        lambda artist, breadth: [],
+    )
+
+    scores = calculate_scores(
+        filepath=str(artists_file),
+        depth=1,
+        breadth=10,
+    )
+
+    assert scores["Radiohead"].total_score == 100
+    assert scores["Muse"].total_score == 50
+    assert scores["Blur"].total_score == 30

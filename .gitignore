@@ -5,3 +5,18 @@
 *.pkl
 *.pickle
 *.p
+
+# IDE
+.idea/
+
+# Python
+__pycache__/
+.coverage
+
+# local scratch files
+.cache-dummy
+
+# local AI agent experiment (not part of the tool)
+agent.py
+tools.py
+CLAUDE.md
